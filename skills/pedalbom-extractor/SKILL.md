@@ -7,9 +7,56 @@ description: Extract a normalized bill of materials from DIY guitar pedal or amp
 
 Use this skill when a user provides a DIY pedal/amplifier build document and wants a Mouser-ready BOM.
 
+Public source for the CLI and this skill:
+
+```text
+https://github.com/gregbonnette/PedalBOM
+```
+
+The skill file is available at:
+
+```text
+https://github.com/gregbonnette/PedalBOM/blob/main/skills/pedalbom-extractor/SKILL.md
+```
+
 ## Core Rule
 
 Never invent manufacturer part numbers, Mouser part numbers, stock status, lifecycle status, or availability. Extract component requirements from the document. Use the `pedalbom` CLI for validation, sourcing, and export.
+
+## CLI Availability
+
+Before validation or sourcing, check whether the CLI is available:
+
+```bash
+pedalbom --help
+```
+
+If `pedalbom` is not found and this repository is available locally, install it into the current Python environment:
+
+```bash
+python -m pip install .
+```
+
+If dependency resolution or build isolation fails, make sure build tools are installed, then install the local package without re-resolving dependencies:
+
+```bash
+python -m pip install "setuptools>=69" wheel
+python -m pip install --no-build-isolation --no-deps .
+```
+
+For a persistent user-level CLI outside an activated virtual environment, recommend `pipx`:
+
+```bash
+pipx install /path/to/PedalBOM
+```
+
+If the repository is not already available locally and network access is allowed, install the CLI from the public repo:
+
+```bash
+pipx install git+https://github.com/gregbonnette/PedalBOM.git
+```
+
+Do not continue to `pedalbom source` until the user has provided `MOUSER_API_KEY` in the shell environment that runs the CLI. If the repository is not available locally or installation requires network access that is unavailable, ask the user to install the CLI locally and then resume.
 
 ## Workflow
 

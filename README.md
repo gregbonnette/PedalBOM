@@ -10,7 +10,13 @@ The recommended architecture is agent-assisted:
 
 ## Install
 
-From this repository:
+Public repository:
+
+```text
+https://github.com/gregbonnette/PedalBOM
+```
+
+From a local checkout of this repository:
 
 ```bash
 python -m venv .venv
@@ -22,6 +28,12 @@ Or, if you prefer `pipx`:
 
 ```bash
 pipx install .
+```
+
+Or install the CLI directly from GitHub:
+
+```bash
+pipx install git+https://github.com/gregbonnette/PedalBOM.git
 ```
 
 Set your Mouser Search API key in the shell that will run `pedalbom`:
@@ -58,6 +70,18 @@ Use the file at:
 
 ```text
 skills/pedalbom-extractor/SKILL.md
+```
+
+The public source for both the skill and CLI is:
+
+```text
+https://github.com/gregbonnette/PedalBOM
+```
+
+The skill file lives at:
+
+```text
+https://github.com/gregbonnette/PedalBOM/blob/main/skills/pedalbom-extractor/SKILL.md
 ```
 
 Then, in Claude:
