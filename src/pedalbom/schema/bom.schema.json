@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pedalbom.local/schema/bom.schema.json",
+  "title": "PedalBOM Extracted BOM",
+  "type": "object",
+  "required": ["schema_version", "project", "items"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "project": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "vendor": { "type": "string" },
+        "document_version": { "type": "string" },
+        "source_document": { "type": "string" }
+      }
+    },
+    "global_requirements": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["part_id", "value", "quantity", "category"],
+        "additionalProperties": false,
+        "properties": {
+          "part_id": { "type": "string", "minLength": 1 },
+          "value": { "type": "string", "minLength": 1 },
+          "quantity": { "type": "integer", "minimum": 1 },
+          "category": {
+            "type": "string",
+            "enum": [
+              "resistor",
+              "capacitor",
+              "potentiometer",
+              "semiconductor",
+              "ic",
+              "socket",
+              "switch",
+              "jack",
+              "hardware",
+              "other"
+            ]
+          },
+          "notes": { "type": "string" },
+          "requirements": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": []
+          },
+          "source_evidence": { "type": "string" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "manufacturer_part_number": { "type": "string" },
+          "mouser_part_number": { "type": "string" }
+        }
+      }
+    },
+    "issues": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["severity", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "severity": { "type": "string", "enum": ["info", "warning", "error"] },
+          "message": { "type": "string", "minLength": 1 },
+          "affected_part_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": []
+          }
+        }
+      }
+    }
+  }
+}

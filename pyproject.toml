@@ -1,0 +1,25 @@
+[project]
+name = "pedalbom"
+version = "0.1.0"
+description = "Local-first BOM extractor for DIY guitar pedal build documents."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "pypdf>=4.0.0",
+]
+
+[project.scripts]
+pedalbom = "pedalbom.cli:main"
+
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+pedalbom = ["schema/*"]
