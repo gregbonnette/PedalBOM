@@ -64,14 +64,14 @@ pedalbom doctor
 Claude supports custom Skills as uploadable skill folders. Create a ZIP that contains the skill directory:
 
 ```text
-pedalbom-extractor/
+pedalbom/
   SKILL.md
 ```
 
 Use the file at:
 
 ```text
-skills/pedalbom-extractor/SKILL.md
+skills/pedalbom/SKILL.md
 ```
 
 The public source for both the skill and CLI is:
@@ -83,13 +83,13 @@ https://github.com/gregbonnette/PedalBOM
 The skill file lives at:
 
 ```text
-https://github.com/gregbonnette/PedalBOM/blob/main/skills/pedalbom-extractor/SKILL.md
+https://github.com/gregbonnette/PedalBOM/blob/main/skills/pedalbom/SKILL.md
 ```
 
 Then, in Claude:
 
 1. Enable Skills and code execution if your plan/workspace requires it.
-2. Add or upload the `pedalbom-extractor` skill folder.
+2. Add or upload the `pedalbom` skill folder.
 3. Start a chat, upload the build document PDF, and ask:
 
 ```text
@@ -105,14 +105,14 @@ Mouser API access can be restricted by source IP address. If Claude is running i
 For a personal Claude Code skill:
 
 ```bash
-mkdir -p ~/.claude/skills/pedalbom-extractor
-cp skills/pedalbom-extractor/SKILL.md ~/.claude/skills/pedalbom-extractor/SKILL.md
+mkdir -p ~/.claude/skills/pedalbom
+cp skills/pedalbom/SKILL.md ~/.claude/skills/pedalbom/SKILL.md
 ```
 
 For a project-local skill, copy it into:
 
 ```text
-.claude/skills/pedalbom-extractor/SKILL.md
+.claude/skills/pedalbom/SKILL.md
 ```
 
 Then run Claude Code from a local shell where `pedalbom`, `MOUSER_API_KEY`, and your Mouser-allowed network/IP are available.
@@ -124,7 +124,7 @@ ChatGPT does not use Claude-style `SKILL.md` files as native executable skills. 
 ### ChatGPT Project
 
 1. Create a ChatGPT Project for PedalBOM work.
-2. Add the contents of `skills/pedalbom-extractor/SKILL.md` to the Project instructions.
+2. Add the contents of `skills/pedalbom/SKILL.md` to the Project instructions.
 3. Upload `src/pedalbom/schema/bom.schema.json` as a reference file.
 4. Upload a build document PDF and ask:
 
@@ -146,12 +146,12 @@ pedalbom export sourced.sourced.json --out mouser-bom.csv
 ### Custom GPT
 
 1. Create a custom GPT.
-2. Paste the contents of `skills/pedalbom-extractor/SKILL.md` into the GPT instructions.
+2. Paste the contents of `skills/pedalbom/SKILL.md` into the GPT instructions.
 3. Add `src/pedalbom/schema/bom.schema.json` as knowledge.
 4. Enable file upload/analysis capabilities.
 5. Use the GPT to extract validated JSON, then run the CLI locally for validation, Mouser candidate search, candidate selection, and CSV export.
 
-If you are using a ChatGPT/Codex-style local agent with terminal access, point it at this repository and ask it to use `skills/pedalbom-extractor/SKILL.md`; it can run the same CLI commands directly.
+If you are using a ChatGPT/Codex-style local agent with terminal access, point it at this repository and ask it to use `skills/pedalbom/SKILL.md`; it can run the same CLI commands directly.
 
 ## Agent Workflow
 

@@ -1,9 +1,9 @@
 ---
-name: pedalbom-extractor
+name: pedalbom
 description: Extract a normalized bill of materials from DIY guitar pedal or amplifier build documents, validate it with the local pedalbom CLI, and source purchasable parts through Mouser without inventing part numbers.
 ---
 
-# PedalBOM Extractor
+# PedalBOM
 
 Use this skill when a user provides a DIY pedal/amplifier build document and wants a Mouser-ready BOM.
 
@@ -16,7 +16,7 @@ https://github.com/gregbonnette/PedalBOM
 The skill file is available at:
 
 ```text
-https://github.com/gregbonnette/PedalBOM/blob/main/skills/pedalbom-extractor/SKILL.md
+https://github.com/gregbonnette/PedalBOM/blob/main/skills/pedalbom/SKILL.md
 ```
 
 ## Core Rule
