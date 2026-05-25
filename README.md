@@ -134,7 +134,7 @@ If ChatGPT cannot run local commands in your environment, have it produce `extra
 ```bash
 pedalbom validate extracted.bom.json
 pedalbom inspect extracted.bom.json
-pedalbom source extracted.bom.json --out sourced.sourced.json
+pedalbom source extracted.bom.json --out sourced.sourced.json --rate-limit-delay 6 --retry-delay 75
 # Review sourced.sourced.json and choose selected parts from sourcing.candidates.
 pedalbom export sourced.sourced.json --out mouser-bom.csv
 ```
@@ -171,7 +171,7 @@ The assistant or user should then run:
 ```bash
 pedalbom validate extracted.bom.json
 pedalbom inspect extracted.bom.json
-pedalbom source extracted.bom.json --out sourced.sourced.json
+pedalbom source extracted.bom.json --out sourced.sourced.json --rate-limit-delay 6 --retry-delay 75
 # Have the assistant review sourced.sourced.json, choose parts from each
 # item's sourcing.candidates list, and populate manufacturer_part_number,
 # mouser_part_number, and selection_rationale.
@@ -184,10 +184,12 @@ pedalbom export sourced.sourced.json --out mouser-bom.csv
 pedalbom schema
 pedalbom validate extracted.bom.json
 pedalbom inspect extracted.bom.json
-pedalbom source extracted.bom.json --out sourced.sourced.json
+pedalbom source extracted.bom.json --out sourced.sourced.json --rate-limit-delay 6 --retry-delay 75
 # Review sourced.sourced.json and choose selected parts from sourcing.candidates.
 pedalbom export sourced.sourced.json --out mouser-bom.csv
 ```
+
+`pedalbom source` caches identical search queries during a run. Use `--rate-limit-delay` to slow unique Mouser calls and `--retry-delay` to wait longer after a `TooManyRequests` response.
 
 There is also a fallback parser for text-extractable PDFs:
 

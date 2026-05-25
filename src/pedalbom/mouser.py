@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 MOUSER_BASE_URL = "https://api.mouser.com/api/v1/search/keyword"
 
@@ -24,12 +25,35 @@ def load_mouser_config(api_key: str | None = None) -> MouserConfig:
     return MouserConfig(api_key=resolved)
 
 
-def source_bom(data: dict[str, Any], api_key: str | None = None, limit: int = 5) -> dict[str, Any]:
+def source_bom(
+    data: dict[str, Any],
+    api_key: str | None = None,
+    limit: int = 5,
+    rate_limit_delay: float = 2.1,
+    max_retries: int = 2,
+    retry_delay: float = 60.0,
+    sleeper: Callable[[float], None] = time.sleep,
+) -> dict[str, Any]:
     config = load_mouser_config(api_key)
     sourced_items: list[dict[str, Any]] = []
+    responses_by_query: dict[str, dict[str, Any]] = {}
+    unique_call_count = 0
     for item in data["items"]:
         query = build_keyword_query(item)
-        response = search_keyword(query, config)
+        if query in responses_by_query:
+            response = responses_by_query[query]
+        else:
+            if unique_call_count and rate_limit_delay > 0:
+                sleeper(rate_limit_delay)
+            response = search_keyword(
+                query,
+                config,
+                max_retries=max_retries,
+                retry_delay=retry_delay,
+                sleeper=sleeper,
+            )
+            responses_by_query[query] = response
+            unique_call_count += 1
         candidates = rank_candidates(item, response.get("SearchResults", {}).get("Parts", []))
         sourced_item = dict(item)
         sourced_item["sourcing"] = {
@@ -47,7 +71,8 @@ def source_bom(data: dict[str, Any], api_key: str | None = None, limit: int = 5)
             "note": (
                 "Mouser candidates were collected from the Search API. Final manufacturer and Mouser part "
                 "numbers require an explicit downstream selection step based on fit, orderability, lifecycle, "
-                "lead time, and audio-application suitability."
+                "lead time, and audio-application suitability. Identical search queries were cached within "
+                "this run to reduce API usage."
             ),
         },
     }
@@ -70,7 +95,13 @@ def build_keyword_query(item: dict[str, Any]) -> str:
     return " ".join(piece for piece in terms if piece).strip()
 
 
-def search_keyword(query: str, config: MouserConfig) -> dict[str, Any]:
+def search_keyword(
+    query: str,
+    config: MouserConfig,
+    max_retries: int = 2,
+    retry_delay: float = 60.0,
+    sleeper: Callable[[float], None] = time.sleep,
+) -> dict[str, Any]:
     params = urllib.parse.urlencode({"apiKey": config.api_key})
     body = json.dumps({"SearchByKeywordRequest": {"keyword": query, "records": 50, "startingRecord": 0}})
     request = urllib.request.Request(
@@ -79,12 +110,18 @@ def search_keyword(query: str, config: MouserConfig) -> dict[str, Any]:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Mouser API HTTP {exc.code}: {detail}") from exc
+    for attempt in range(max_retries + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            exc.close()
+            if is_rate_limit_error(exc.code, detail) and attempt < max_retries:
+                sleeper(retry_delay)
+                continue
+            raise RuntimeError(f"Mouser API HTTP {exc.code}: {detail}") from exc
+    raise RuntimeError("Mouser API search failed after retries.")
 
 
 def rank_candidates(item: dict[str, Any], parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -162,3 +199,11 @@ def is_orderable(part: dict[str, Any]) -> bool:
     if any(word in availability for word in ("obsolete", "discontinued", "not available")):
         return False
     return "in stock" in availability or bool(part.get("PriceBreaks"))
+
+
+def is_rate_limit_error(status_code: int, detail: str) -> bool:
+    return status_code in {403, 429} and (
+        "TooManyRequests" in detail
+        or "Maximum calls per minute exceeded" in detail
+        or "rate limit" in detail.lower()
+    )

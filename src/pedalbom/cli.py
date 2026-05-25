@@ -33,6 +33,24 @@ def main() -> None:
     source_command.add_argument("--out", type=Path, required=True)
     source_command.add_argument("--api-key", help="Mouser Search API key. Defaults to MOUSER_API_KEY.")
     source_command.add_argument("--limit", type=int, default=5, help="Candidate count to keep per row.")
+    source_command.add_argument(
+        "--rate-limit-delay",
+        type=float,
+        default=2.1,
+        help="Seconds to wait between unique Mouser search calls.",
+    )
+    source_command.add_argument(
+        "--max-retries",
+        type=int,
+        default=2,
+        help="Retry count for Mouser rate-limit responses.",
+    )
+    source_command.add_argument(
+        "--retry-delay",
+        type=float,
+        default=60.0,
+        help="Seconds to wait before retrying after a Mouser rate-limit response.",
+    )
 
     export_command = subparsers.add_parser("export", help="Export PedalBOM JSON to CSV.")
     export_command.add_argument("bom", type=Path)
@@ -64,7 +82,14 @@ def main() -> None:
             print_validation_result(result, stream=sys.stderr)
             raise SystemExit(1)
         try:
-            sourced = source_bom(bom, api_key=args.api_key, limit=args.limit)
+            sourced = source_bom(
+                bom,
+                api_key=args.api_key,
+                limit=args.limit,
+                rate_limit_delay=args.rate_limit_delay,
+                max_retries=args.max_retries,
+                retry_delay=args.retry_delay,
+            )
         except Exception as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             raise SystemExit(1) from exc

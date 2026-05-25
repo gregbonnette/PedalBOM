@@ -58,6 +58,12 @@ pipx install git+https://github.com/gregbonnette/PedalBOM.git
 
 Do not continue to `pedalbom source` until the user has provided `MOUSER_API_KEY` in the shell environment that runs the CLI. If the repository is not available locally or installation requires network access that is unavailable, ask the user to install the CLI locally and then resume.
 
+`pedalbom source` caches identical search queries during a run, waits between unique Mouser calls, and retries rate-limit responses. If Mouser returns `TooManyRequests`, rerun with a slower delay:
+
+```bash
+pedalbom source extracted.bom.json --out sourced.sourced.json --rate-limit-delay 6 --retry-delay 75
+```
+
 ## Workflow
 
 1. Read the build document and extract a normalized BOM JSON object matching `pedalbom schema`.
@@ -146,7 +152,7 @@ Allowed categories are:
 pedalbom schema
 pedalbom validate extracted.bom.json
 pedalbom inspect extracted.bom.json
-pedalbom source extracted.bom.json --out sourced.sourced.json
+pedalbom source extracted.bom.json --out sourced.sourced.json --rate-limit-delay 6 --retry-delay 75
 # Review sourced.sourced.json and choose selected parts from sourcing.candidates.
 pedalbom export sourced.sourced.json --out mouser-bom.csv
 ```
