@@ -55,6 +55,28 @@ class SchemaTests(unittest.TestCase):
         self.assertEqual(bom["items"][0]["category"], "resistor")
         self.assertEqual(bom["global_requirements"], ["5mm film caps"])
 
+    def test_sourced_selection_without_rationale_warns(self) -> None:
+        bom = {
+            "schema_version": "1.0",
+            "project": {"name": "Test Drive"},
+            "items": [
+                {
+                    "part_id": "R1",
+                    "value": "10k",
+                    "quantity": 1,
+                    "category": "resistor",
+                    "source_evidence": "R1 10k",
+                    "mouser_part_number": "603-MFR-25FBF52-10K",
+                    "sourcing": {"provider": "mouser", "candidates": []},
+                }
+            ],
+        }
+
+        result = validate_bom(bom)
+
+        self.assertTrue(result.ok)
+        self.assertTrue(any("selection_rationale" in warning for warning in result.warnings))
+
 
 if __name__ == "__main__":
     unittest.main()

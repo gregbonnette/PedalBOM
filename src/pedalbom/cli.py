@@ -116,6 +116,7 @@ def write_schema_csv(bom: dict, path: Path) -> None:
         "notes",
         "manufacturer_part_number",
         "mouser_part_number",
+        "selection_rationale",
         "source_evidence",
     ]
     with path.open("w", encoding="utf-8", newline="") as handle:

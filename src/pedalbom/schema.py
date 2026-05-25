@@ -112,6 +112,8 @@ def validate_item(item: dict[str, Any], path: str, result: ValidationResult) -> 
             result.warnings.append(
                 f"{path}.{forbidden} is populated; ensure it came directly from source evidence or sourcing output."
             )
+    if item.get("sourcing") and item.get("mouser_part_number") and not item.get("selection_rationale"):
+        result.warnings.append(f"{path}.selection_rationale is recommended when selecting from sourcing candidates.")
 
     if not item.get("source_evidence"):
         result.warnings.append(f"{path}.source_evidence is missing.")

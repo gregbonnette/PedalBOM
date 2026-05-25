@@ -5,7 +5,8 @@ PedalBOM is a local-first sourcing utility for DIY guitar pedal and amplifier bu
 The recommended architecture is agent-assisted:
 
 - An LLM skill reads arbitrary build instructions and extracts a normalized BOM JSON file.
-- The `pedalbom` CLI validates that JSON, calls Mouser with the user's own API key, and exports a CSV.
+- The `pedalbom` CLI validates that JSON and calls Mouser with the user's own API key to collect orderable candidate parts.
+- The LLM reviews the Mouser candidates for each row, selects the best available fit, records the selection rationale, and then the CLI exports a CSV.
 - Manufacturer and Mouser part numbers are never invented by the LLM. They must come from the source document or the Mouser API.
 
 ## Install
@@ -94,7 +95,7 @@ Then, in Claude:
 Use the PedalBOM skill to create a Mouser BOM from this build document.
 ```
 
-Claude should extract `extracted.bom.json`, validate it with the CLI, ask about any ambiguous parts, run Mouser sourcing with your local API key, and export `mouser-bom.csv`.
+Claude should extract `extracted.bom.json`, validate it with the CLI, ask about any ambiguous parts, run Mouser sourcing with your local API key, select the best orderable candidates from the search results, and export `mouser-bom.csv`.
 
 ### Claude Code
 
@@ -134,6 +135,7 @@ If ChatGPT cannot run local commands in your environment, have it produce `extra
 pedalbom validate extracted.bom.json
 pedalbom inspect extracted.bom.json
 pedalbom source extracted.bom.json --out sourced.sourced.json
+# Review sourced.sourced.json and choose selected parts from sourcing.candidates.
 pedalbom export sourced.sourced.json --out mouser-bom.csv
 ```
 
@@ -143,7 +145,7 @@ pedalbom export sourced.sourced.json --out mouser-bom.csv
 2. Paste the contents of `skills/pedalbom-extractor/SKILL.md` into the GPT instructions.
 3. Add `src/pedalbom/schema/bom.schema.json` as knowledge.
 4. Enable file upload/analysis capabilities.
-5. Use the GPT to extract validated JSON, then run the CLI locally for validation, Mouser sourcing, and CSV export.
+5. Use the GPT to extract validated JSON, then run the CLI locally for validation, Mouser candidate search, candidate selection, and CSV export.
 
 If you are using a ChatGPT/Codex-style local agent with terminal access, point it at this repository and ask it to use `skills/pedalbom-extractor/SKILL.md`; it can run the same CLI commands directly.
 
@@ -154,8 +156,9 @@ Whichever assistant you use, the target workflow is:
 1. The LLM reads the PDF and writes `extracted.bom.json`.
 2. The CLI validates the JSON.
 3. The user resolves any ambiguity.
-4. The CLI calls Mouser using the user's API key.
-5. The CLI exports the final CSV.
+4. The CLI calls Mouser using the user's API key and writes candidate search results.
+5. The LLM reviews those candidates and selects the best orderable part for each row.
+6. The CLI exports the final CSV.
 
 The central prompt is:
 
@@ -169,6 +172,9 @@ The assistant or user should then run:
 pedalbom validate extracted.bom.json
 pedalbom inspect extracted.bom.json
 pedalbom source extracted.bom.json --out sourced.sourced.json
+# Have the assistant review sourced.sourced.json, choose parts from each
+# item's sourcing.candidates list, and populate manufacturer_part_number,
+# mouser_part_number, and selection_rationale.
 pedalbom export sourced.sourced.json --out mouser-bom.csv
 ```
 
@@ -179,6 +185,7 @@ pedalbom schema
 pedalbom validate extracted.bom.json
 pedalbom inspect extracted.bom.json
 pedalbom source extracted.bom.json --out sourced.sourced.json
+# Review sourced.sourced.json and choose selected parts from sourcing.candidates.
 pedalbom export sourced.sourced.json --out mouser-bom.csv
 ```
 

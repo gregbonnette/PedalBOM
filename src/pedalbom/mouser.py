@@ -37,10 +37,6 @@ def source_bom(data: dict[str, Any], api_key: str | None = None, limit: int = 5)
             "provider": "mouser",
             "candidates": candidates[:limit],
         }
-        if candidates:
-            best = candidates[0]
-            sourced_item["manufacturer_part_number"] = best.get("manufacturer_part_number", "")
-            sourced_item["mouser_part_number"] = best.get("mouser_part_number", "")
         sourced_items.append(sourced_item)
 
     return {
@@ -48,7 +44,11 @@ def source_bom(data: dict[str, Any], api_key: str | None = None, limit: int = 5)
         "items": sourced_items,
         "sourcing": {
             "provider": "mouser",
-            "note": "Manufacturer and Mouser part numbers were selected only from Mouser Search API results.",
+            "note": (
+                "Mouser candidates were collected from the Search API. Final manufacturer and Mouser part "
+                "numbers require an explicit downstream selection step based on fit, orderability, lifecycle, "
+                "lead time, and audio-application suitability."
+            ),
         },
     }
 
@@ -98,14 +98,18 @@ def rank_candidates(item: dict[str, Any], parts: list[dict[str, Any]]) -> list[d
 
 
 def normalize_mouser_part(part: dict[str, Any]) -> dict[str, Any]:
+    availability = part.get("Availability", "")
     return {
         "mouser_part_number": part.get("MouserPartNumber", ""),
         "manufacturer_part_number": part.get("ManufacturerPartNumber", ""),
         "manufacturer": part.get("Manufacturer", ""),
         "description": part.get("Description", ""),
         "category": part.get("Category", ""),
-        "availability": part.get("Availability", ""),
+        "availability": availability,
+        "in_stock_quantity": parse_in_stock_quantity(availability),
+        "orderable": is_orderable(part),
         "lifecycle_status": part.get("LifecycleStatus", ""),
+        "lead_time": part.get("LeadTime", ""),
         "product_detail_url": part.get("ProductDetailUrl", ""),
         "datasheet_url": part.get("DataSheetUrl", ""),
         "min": part.get("Min", ""),
@@ -141,3 +145,20 @@ def score_candidate(item: dict[str, Any], candidate: dict[str, Any]) -> int:
 
 def tokenize(value: str) -> list[str]:
     return [token.lower() for token in re.split(r"[^A-Za-z0-9.]+", value) if token]
+
+
+def parse_in_stock_quantity(availability: Any) -> int:
+    match = re.search(r"\b([0-9][0-9,]*)\s+in stock\b", str(availability), flags=re.IGNORECASE)
+    if not match:
+        return 0
+    return int(match.group(1).replace(",", ""))
+
+
+def is_orderable(part: dict[str, Any]) -> bool:
+    availability = str(part.get("Availability", "")).lower()
+    lifecycle = str(part.get("LifecycleStatus", "")).lower()
+    if any(word in lifecycle for word in ("obsolete", "discontinued", "not recommended")):
+        return False
+    if any(word in availability for word in ("obsolete", "discontinued", "not available")):
+        return False
+    return "in stock" in availability or bool(part.get("PriceBreaks"))
