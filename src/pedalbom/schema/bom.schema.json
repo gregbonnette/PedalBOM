@@ -62,6 +62,8 @@
           "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
           "manufacturer_part_number": { "type": "string" },
           "mouser_part_number": { "type": "string" },
+          "supplier": { "type": "string" },
+          "product_url": { "type": "string" },
           "selection_rationale": { "type": "string" },
           "sourcing": {
             "type": "object",

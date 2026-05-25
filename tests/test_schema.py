@@ -77,6 +77,28 @@ class SchemaTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertTrue(any("selection_rationale" in warning for warning in result.warnings))
 
+    def test_non_mouser_fallback_link_fields_are_allowed(self) -> None:
+        bom = {
+            "schema_version": "1.0",
+            "project": {"name": "Test Drive"},
+            "items": [
+                {
+                    "part_id": "Footswitch",
+                    "value": "3PDT",
+                    "quantity": 1,
+                    "category": "switch",
+                    "source_evidence": "Footswitch 3PDT 1",
+                    "supplier": "Love My Switches",
+                    "product_url": "https://lovemyswitches.com/example",
+                    "selection_rationale": "Mouser unavailable; selected reliable 3PDT solder-lug stomp switch.",
+                }
+            ],
+        }
+
+        result = validate_bom(bom)
+
+        self.assertTrue(result.ok)
+
 
 if __name__ == "__main__":
     unittest.main()
