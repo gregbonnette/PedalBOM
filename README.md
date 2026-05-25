@@ -5,7 +5,7 @@ PedalBOM is a local-first sourcing utility for DIY guitar pedal and amplifier bu
 The recommended architecture is agent-assisted:
 
 - An LLM skill reads arbitrary build instructions and extracts a normalized BOM JSON file.
-- The `pedalbom` CLI validates that JSON and calls Mouser with the user's own API key to collect orderable candidate parts.
+- The `pedalbom` CLI validates that JSON and calls Mouser from the user's local environment with the user's own API key to collect orderable candidate parts.
 - The LLM reviews the Mouser candidates for each row, selects the best available fit, records the selection rationale, and then the CLI exports a CSV.
 - Manufacturer and Mouser part numbers are never invented by the LLM. They must come from the source document or the Mouser API.
 
@@ -54,6 +54,7 @@ Verify the CLI:
 ```bash
 pedalbom --help
 pedalbom schema
+pedalbom doctor
 ```
 
 ## Claude Setup
@@ -95,7 +96,9 @@ Then, in Claude:
 Use the PedalBOM skill to create a Mouser BOM from this build document.
 ```
 
-Claude should extract `extracted.bom.json`, validate it with the CLI, ask about any ambiguous parts, run Mouser sourcing with your local API key, select the best orderable candidates from the search results, and export `mouser-bom.csv`.
+Claude should extract `extracted.bom.json`, validate it with the CLI, ask about any ambiguous parts, run Mouser sourcing from your local environment with your local API key, select the best orderable candidates from the search results, and export `mouser-bom.csv`.
+
+Mouser API access can be restricted by source IP address. If Claude is running in a hosted environment that is not your local machine/network, have Claude prepare `extracted.bom.json`, then run the `pedalbom source ...` command yourself in a local terminal and provide `sourced.sourced.json` back to Claude for candidate selection.
 
 ### Claude Code
 
@@ -112,7 +115,7 @@ For a project-local skill, copy it into:
 .claude/skills/pedalbom-extractor/SKILL.md
 ```
 
-Then run Claude Code from a shell where `pedalbom` and `MOUSER_API_KEY` are available.
+Then run Claude Code from a local shell where `pedalbom`, `MOUSER_API_KEY`, and your Mouser-allowed network/IP are available.
 
 ## ChatGPT Setup
 
@@ -134,6 +137,7 @@ If ChatGPT cannot run local commands in your environment, have it produce `extra
 ```bash
 pedalbom validate extracted.bom.json
 pedalbom inspect extracted.bom.json
+pedalbom doctor
 pedalbom source extracted.bom.json --out sourced.sourced.json --rate-limit-delay 6 --retry-delay 75
 # Review sourced.sourced.json and choose selected parts from sourcing.candidates.
 pedalbom export sourced.sourced.json --out mouser-bom.csv
@@ -156,7 +160,7 @@ Whichever assistant you use, the target workflow is:
 1. The LLM reads the PDF and writes `extracted.bom.json`.
 2. The CLI validates the JSON.
 3. The user resolves any ambiguity.
-4. The CLI calls Mouser using the user's API key and writes candidate search results.
+4. The CLI calls Mouser from the user's local allowed IP environment and writes candidate search results.
 5. The LLM reviews those candidates and selects the best orderable part for each row.
 6. The CLI exports the final CSV.
 
@@ -171,6 +175,7 @@ The assistant or user should then run:
 ```bash
 pedalbom validate extracted.bom.json
 pedalbom inspect extracted.bom.json
+pedalbom doctor
 pedalbom source extracted.bom.json --out sourced.sourced.json --rate-limit-delay 6 --retry-delay 75
 # Have the assistant review sourced.sourced.json, choose parts from each
 # item's sourcing.candidates list, and populate manufacturer_part_number,
@@ -184,12 +189,17 @@ pedalbom export sourced.sourced.json --out mouser-bom.csv
 pedalbom schema
 pedalbom validate extracted.bom.json
 pedalbom inspect extracted.bom.json
+pedalbom doctor
 pedalbom source extracted.bom.json --out sourced.sourced.json --rate-limit-delay 6 --retry-delay 75
 # Review sourced.sourced.json and choose selected parts from sourcing.candidates.
 pedalbom export sourced.sourced.json --out mouser-bom.csv
 ```
 
 `pedalbom source` caches identical search queries during a run. Use `--rate-limit-delay` to slow unique Mouser calls and `--retry-delay` to wait longer after a `TooManyRequests` response.
+
+Long-running commands print progress messages to stderr. Add `--quiet` to `extract`, `validate`, `source`, or `export` to suppress progress output.
+
+If Mouser returns `InvalidCharacters`, update/reinstall the CLI and rerun sourcing. The CLI sanitizes common electronics symbols before search and reports the failing BOM item plus Mouser query when the API still rejects a keyword.
 
 There is also a fallback parser for text-extractable PDFs:
 

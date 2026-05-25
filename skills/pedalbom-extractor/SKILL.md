@@ -56,13 +56,25 @@ If the repository is not already available locally and network access is allowed
 pipx install git+https://github.com/gregbonnette/PedalBOM.git
 ```
 
-Do not continue to `pedalbom source` until the user has provided `MOUSER_API_KEY` in the shell environment that runs the CLI. If the repository is not available locally or installation requires network access that is unavailable, ask the user to install the CLI locally and then resume.
+Do not continue to `pedalbom source` until the user has provided `MOUSER_API_KEY` in the shell environment that runs the CLI. Check local setup with:
+
+```bash
+pedalbom doctor
+```
+
+Mouser API access can be restricted by source IP address. If running inside Claude.ai, a hosted Claude environment, or any environment that is not the user's local machine/network, do not call `pedalbom source` there. Instead, prepare and validate `extracted.bom.json`, then ask the user to run the sourcing command from their local terminal and provide `sourced.sourced.json` back to continue candidate selection.
+
+If the repository is not available locally or installation requires network access that is unavailable, ask the user to install the CLI locally and then resume.
 
 `pedalbom source` caches identical search queries during a run, waits between unique Mouser calls, and retries rate-limit responses. If Mouser returns `TooManyRequests`, rerun with a slower delay:
 
 ```bash
 pedalbom source extracted.bom.json --out sourced.sourced.json --rate-limit-delay 6 --retry-delay 75
 ```
+
+CLI progress messages are expected and useful during long sourcing runs. Only add `--quiet` if the user explicitly wants less console output.
+
+If Mouser returns `InvalidCharacters`, update/reinstall the CLI and rerun sourcing. The CLI sanitizes common electronics symbols before search and reports the failing BOM item plus Mouser query when the API still rejects a keyword.
 
 ## Workflow
 
@@ -72,10 +84,12 @@ pedalbom source extracted.bom.json --out sourced.sourced.json --rate-limit-delay
 4. Put ambiguities in `issues`; ask the user before sourcing if an issue changes what should be purchased.
 5. Run `pedalbom validate extracted.bom.json`.
 6. Fix validation errors by editing the JSON, not by changing the schema.
-7. Run `pedalbom source extracted.bom.json --out sourced.sourced.json` only after validation succeeds.
-8. Review each item's `sourcing.candidates` list and select the best orderable part from those candidates.
-9. Populate `manufacturer_part_number`, `mouser_part_number`, and `selection_rationale` for each selected item.
-10. Run `pedalbom export sourced.sourced.json --out mouser-bom.csv`.
+7. Run `pedalbom doctor` in the same local shell that will run sourcing.
+8. Run `pedalbom source extracted.bom.json --out sourced.sourced.json` only after validation succeeds and only from the user's local allowed IP environment.
+9. If local execution is not available to the assistant, give the user the exact `pedalbom source` command to run locally and wait for `sourced.sourced.json`.
+10. Review each item's `sourcing.candidates` list and select the best orderable part from those candidates.
+11. Populate `manufacturer_part_number`, `mouser_part_number`, and `selection_rationale` for each selected item.
+12. Run `pedalbom export sourced.sourced.json --out mouser-bom.csv`.
 
 ## Candidate Selection
 
@@ -152,6 +166,7 @@ Allowed categories are:
 pedalbom schema
 pedalbom validate extracted.bom.json
 pedalbom inspect extracted.bom.json
+pedalbom doctor
 pedalbom source extracted.bom.json --out sourced.sourced.json --rate-limit-delay 6 --retry-delay 75
 # Review sourced.sourced.json and choose selected parts from sourcing.candidates.
 pedalbom export sourced.sourced.json --out mouser-bom.csv
