@@ -106,6 +106,8 @@ Prefer active, in-stock, orderable parts with the shortest practical lead time w
 
 Every selected part number must come from `sourcing.candidates` or from explicit source-document evidence. Add `selection_rationale` explaining the fit and any tradeoff, such as "selected 1/4W through-hole metal film 10k resistor, active lifecycle, 3,200 in stock, matches global resistor requirement."
 
+The Mouser search query should describe the core product, not the whole source note. Keep search terms focused on exact value or part number, product type, package/footprint, and critical guitar-pedal fit semantics. Never include PCB designators such as `R2`, `C3`, `Q1`, grouped designators, or `source_evidence` text in Mouser search keywords. Exclude prose such as "adjust to taste", original-circuit commentary, unselected substitutions, and build caveats unless they directly change the part to purchase.
+
 ## JSON Shape
 
 Use `pedalbom schema` for the authoritative schema. Minimum shape:

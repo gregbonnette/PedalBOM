@@ -101,20 +101,193 @@ def source_bom(
 
 
 def build_keyword_query(item: dict[str, Any]) -> str:
-    value = item.get("value", "")
     category = item.get("category", "")
-    notes = item.get("notes", "")
-    requirements = " ".join(item.get("requirements", []))
-    terms = [str(value), str(notes), str(requirements)]
     if category == "resistor":
-        terms.append("resistor")
-    elif category == "capacitor":
-        terms.append("capacitor")
-    elif category in {"semiconductor", "ic"}:
+        return build_resistor_query(item)
+    if category == "capacitor":
+        return build_capacitor_query(item)
+    if category == "potentiometer":
+        return build_potentiometer_query(item)
+    if category in {"semiconductor", "ic"}:
+        return build_semiconductor_query(item)
+    if category == "switch":
+        return build_switch_query(item)
+    return build_generic_query(item)
+
+
+def build_resistor_query(item: dict[str, Any]) -> str:
+    terms = [normalize_component_value(item.get("value", "")), "metal film resistor"]
+    if has_requirement(item, "1/4W") or has_requirement(item, "1/4 W"):
+        terms.append("1/4W")
+    if has_requirement(item, "through-hole"):
         terms.append("through hole")
-    elif category == "potentiometer":
-        terms.append("potentiometer")
-    return sanitize_keyword_query(" ".join(piece for piece in terms if piece))
+    return compact_keyword_query(terms)
+
+
+def build_capacitor_query(item: dict[str, Any]) -> str:
+    terms = [normalize_component_value(item.get("value", ""))]
+    text = item_text(item)
+    requirements = requirements_text(item)
+    if "film" in text:
+        terms.extend(["film capacitor", first_match(text, r"\b\d+(?:\.\d+)?\s*mm\s+pitch\b")])
+    elif "electrolytic" in requirements:
+        terms.extend(["radial electrolytic capacitor", first_match(text, r"\b\d+(?:\.\d+)?\s*V\b")])
+        terms.append(first_match(text, r"\b\d+(?:\.\d+)?\s*mm\s+pitch\b"))
+    elif "non-polar" in requirements or "non polar" in requirements or re.search(r"\bNP\b", text, flags=re.IGNORECASE):
+        terms.extend(["non-polar electrolytic capacitor", first_match(text, r"\b\d+(?:\.\d+)?\s*V\b"), "radial"])
+        terms.append(first_match(text, r"\b\d+(?:\.\d+)?\s*mm\s+pitch\b"))
+    elif "electrolytic" in text:
+        terms.extend(["radial electrolytic capacitor", first_match(text, r"\b\d+(?:\.\d+)?\s*V\b")])
+        terms.append(first_match(text, r"\b\d+(?:\.\d+)?\s*mm\s+pitch\b"))
+    else:
+        terms.append("capacitor")
+    if has_requirement(item, "through-hole"):
+        terms.append("through hole")
+    return compact_keyword_query(terms)
+
+
+def build_potentiometer_query(item: dict[str, Any]) -> str:
+    value = str(item.get("value", ""))
+    taper, resistance = split_potentiometer_value(value)
+    text = item_text(item)
+    if "trimmer" in text or "3362" in text:
+        return compact_keyword_query([resistance or value, "3362", "trimmer potentiometer", "through hole"])
+    terms = [resistance or value, potentiometer_taper(item, taper), "potentiometer"]
+    if "board-mounted" in text or "board mounted" in text:
+        terms.append("PCB mount")
+    if has_requirement(item, "through-hole"):
+        terms.append("through hole")
+    return compact_keyword_query(terms)
+
+
+def build_semiconductor_query(item: dict[str, Any]) -> str:
+    value = str(item.get("value", ""))
+    text = item_text(item)
+    if "LED" in value.upper() or "led" in text:
+        return compact_keyword_query([value, "through hole"])
+    if "diode" in text or value.upper().startswith("1N"):
+        terms = [value, "diode"]
+        if "schottky" in text:
+            terms.append("schottky")
+        if has_requirement(item, "through-hole"):
+            terms.append("through hole")
+        package = first_requirement(item, ["DO-35", "DO-41", "TO-92"])
+        terms.append(package)
+        return compact_keyword_query(terms)
+    terms = [value]
+    if "NPN" in item_text_case_sensitive(item):
+        terms.append("NPN transistor")
+    elif "PNP" in item_text_case_sensitive(item):
+        terms.append("PNP transistor")
+    else:
+        terms.append("transistor")
+    package = first_requirement(item, ["TO-92"])
+    terms.append(package)
+    if has_requirement(item, "through-hole"):
+        terms.append("through hole")
+    return compact_keyword_query(terms)
+
+
+def build_switch_query(item: dict[str, Any]) -> str:
+    value = str(item.get("value", ""))
+    text = item_text(item)
+    terms = [value]
+    if "3pdt" in value.lower() or "stomp" in text:
+        terms.extend(["stomp footswitch", "solder lug"])
+    elif "spdt" in value.lower():
+        terms.extend(["toggle switch", "on-on", "solder lug"])
+    else:
+        terms.append("switch")
+    return compact_keyword_query(terms)
+
+
+def build_generic_query(item: dict[str, Any]) -> str:
+    value = str(item.get("value", ""))
+    text = item_text(item)
+    if "transformer" in text:
+        return compact_keyword_query([value, "audio transformer", "10k 10k"])
+    return compact_keyword_query([value, item.get("category", "")])
+
+
+def compact_keyword_query(terms: list[Any]) -> str:
+    pieces: list[str] = []
+    seen: set[str] = set()
+    for term in terms:
+        sanitized = sanitize_keyword_query(str(term or ""))
+        if not sanitized:
+            continue
+        key = sanitized.lower()
+        if key not in seen:
+            pieces.append(sanitized)
+            seen.add(key)
+    return sanitize_keyword_query(" ".join(pieces))
+
+
+def item_text(item: dict[str, Any]) -> str:
+    return item_text_case_sensitive(item).lower()
+
+
+def item_text_case_sensitive(item: dict[str, Any]) -> str:
+    requirements = " ".join(str(requirement) for requirement in item.get("requirements", []))
+    return " ".join(str(item.get(field, "")) for field in ("value", "notes")) + " " + requirements
+
+
+def requirements_text(item: dict[str, Any]) -> str:
+    return " ".join(str(requirement) for requirement in item.get("requirements", [])).lower()
+
+
+def has_requirement(item: dict[str, Any], requirement: str) -> bool:
+    return requirement.lower() in item_text(item)
+
+
+def first_requirement(item: dict[str, Any], options: list[str]) -> str:
+    text = item_text_case_sensitive(item)
+    for option in options:
+        if option in text:
+            return option
+    return ""
+
+
+def first_match(text: str, pattern: str) -> str:
+    match = re.search(pattern, text, flags=re.IGNORECASE)
+    return match.group(0) if match else ""
+
+
+def split_potentiometer_value(value: str) -> tuple[str, str]:
+    match = re.match(r"\s*([ABC])\s*(.+?)\s*$", value, flags=re.IGNORECASE)
+    if not match:
+        return "", normalize_component_value(value)
+    taper_code = match.group(1).upper()
+    taper = {"A": "audio taper", "B": "linear taper", "C": "reverse audio taper"}.get(taper_code, "")
+    return taper, normalize_component_value(match.group(2))
+
+
+def potentiometer_taper(item: dict[str, Any], fallback: str) -> str:
+    text = item_text(item)
+    if "reverse audio taper" in text or "reverse log" in text:
+        return "reverse audio taper"
+    if "audio taper" in text or "log/audio" in text or "log taper" in text:
+        return "audio taper"
+    if "linear taper" in text:
+        return "linear taper"
+    return fallback
+
+
+def normalize_component_value(value: Any) -> str:
+    text = str(value).strip()
+    match = re.fullmatch(r"(\d+(?:\.\d+)?)\s*[Rr]", text)
+    if match:
+        return f"{match.group(1)} ohm"
+    match = re.fullmatch(r"(\d+)[Rr](\d+)", text)
+    if match:
+        return f"{match.group(1)}.{match.group(2)} ohm"
+    match = re.fullmatch(r"(\d+)[Kk](\d+)", text)
+    if match:
+        return f"{match.group(1)}.{match.group(2)}k"
+    match = re.fullmatch(r"(\d+)[Mm](\d+)", text)
+    if match:
+        return f"{match.group(1)}.{match.group(2)}M"
+    return text
 
 
 def sanitize_keyword_query(query: str) -> str:

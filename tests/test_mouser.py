@@ -72,7 +72,110 @@ class MouserTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(query, "10k ohm 1% metal film audio 1/4W through-hole low-noise 50ppm/C resistor")
+        self.assertEqual(query, "10k ohm 1% metal film resistor through hole")
+
+    def test_build_keyword_query_ignores_non_sourcing_notes(self) -> None:
+        query = build_keyword_query(
+            {
+                "part_id": "R2",
+                "value": "390R",
+                "quantity": 1,
+                "category": "resistor",
+                "notes": "Sets max brightness for LED. Adjust to taste. 1/4W through-hole",
+                "requirements": ["through-hole", "1/4W"],
+            }
+        )
+
+        self.assertEqual(query, "390 ohm metal film resistor 1/4W through hole")
+
+    def test_build_keyword_query_never_includes_pcb_designators_or_source_evidence(self) -> None:
+        query = build_keyword_query(
+            {
+                "part_id": "R7, R17",
+                "value": "68k",
+                "quantity": 2,
+                "category": "resistor",
+                "notes": "1/4W through-hole",
+                "requirements": ["through-hole", "1/4W"],
+                "source_evidence": "R7, R17 68k 2 from build table",
+            }
+        )
+
+        self.assertEqual(query, "68k metal film resistor 1/4W through hole")
+        self.assertNotIn("R7", query)
+        self.assertNotIn("R17", query)
+        self.assertNotIn("build table", query)
+
+    def test_build_capacitor_query_focuses_on_fit(self) -> None:
+        query = build_keyword_query(
+            {
+                "part_id": "C3",
+                "value": "10uF",
+                "quantity": 1,
+                "category": "capacitor",
+                "notes": "Non-polar preferred per build notes; if polarised, insert OPPOSITE to silkscreen. 16V min. 2.5mm pitch",
+                "requirements": ["through-hole", "non-polar preferred", "16V minimum", "2.5mm pitch"],
+            }
+        )
+
+        self.assertEqual(query, "10uF non-polar electrolytic capacitor 16v radial 2.5mm pitch through hole")
+
+    def test_build_capacitor_query_prefers_electrolytic_requirement_over_noisy_evidence(self) -> None:
+        query = build_keyword_query(
+            {
+                "part_id": "C4, C5, C6, C7, C8",
+                "value": "10uF",
+                "quantity": 5,
+                "category": "capacitor",
+                "notes": "Electrolytic, 16V minimum, 2.5mm pitch. C3 is separated as NP variant.",
+                "requirements": ["through-hole", "electrolytic", "16V minimum", "2.5mm pitch"],
+                "source_evidence": "C3, C4, C5, C6, C7, C8 10uF 5 16v min",
+            }
+        )
+
+        self.assertEqual(query, "10uF radial electrolytic capacitor 16v 2.5mm pitch through hole")
+
+    def test_build_semiconductor_query_ignores_substitution_notes(self) -> None:
+        query = build_keyword_query(
+            {
+                "part_id": "Q1, Q3",
+                "value": "2N3904",
+                "quantity": 2,
+                "category": "semiconductor",
+                "notes": "NPN transistor. Documented as 2N3700 but PCB validated with 2N3904; sub BC557 also listed.",
+                "requirements": ["through-hole", "NPN", "TO-92"],
+            }
+        )
+
+        self.assertEqual(query, "2N3904 NPN transistor TO-92 through hole")
+
+    def test_build_potentiometer_query_expands_taper_semantics(self) -> None:
+        query = build_keyword_query(
+            {
+                "part_id": "VOLUME",
+                "value": "A250K",
+                "quantity": 1,
+                "category": "potentiometer",
+                "notes": "Audio taper 250k, board-mounted, 125B enclosure compatible",
+                "requirements": ["through-hole", "audio taper", "board-mounted", "9mm or 16mm"],
+            }
+        )
+
+        self.assertEqual(query, "250K audio taper potentiometer PCB mount through hole")
+
+    def test_build_potentiometer_query_prefers_extracted_taper_semantics(self) -> None:
+        query = build_keyword_query(
+            {
+                "part_id": "GAIN",
+                "value": "C10K",
+                "quantity": 1,
+                "category": "potentiometer",
+                "notes": "Log/audio taper 10k, mod to original circuit, board-mounted",
+                "requirements": ["through-hole", "audio taper", "board-mounted"],
+            }
+        )
+
+        self.assertEqual(query, "10K audio taper potentiometer PCB mount through hole")
 
     def test_forbidden_non_rate_limit_error_mentions_local_terminal(self) -> None:
         message = format_mouser_http_error(403, '{"Message":"IP address not allowed"}')
