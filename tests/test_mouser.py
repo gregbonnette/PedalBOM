@@ -9,6 +9,8 @@ from pedalbom.mouser import (
     build_keyword_query,
     format_mouser_http_error,
     parse_in_stock_quantity,
+    preferred_manufacturer_filters,
+    search_keyword_and_manufacturer,
     search_keyword,
     source_bom,
 )
@@ -47,8 +49,11 @@ class MouserTests(unittest.TestCase):
             }
         }
 
-        with patch("pedalbom.mouser.search_keyword", return_value=response):
-            sourced = source_bom(bom, api_key="test-key")
+        with (
+            patch("pedalbom.mouser.search_keyword", return_value=response),
+            patch("pedalbom.mouser.search_keyword_and_manufacturer", return_value={"SearchResults": {"Parts": []}}),
+        ):
+            sourced = source_bom(bom, api_key="test-key", sleeper=lambda _: None)
 
         item = sourced["items"][0]
         self.assertNotIn("manufacturer_part_number", item)
@@ -119,6 +124,17 @@ class MouserTests(unittest.TestCase):
         )
 
         self.assertEqual(query, "10uF non-polar electrolytic capacitor 16v radial 2.5mm pitch through hole")
+
+    def test_preferred_manufacturer_filters_for_film_capacitors(self) -> None:
+        filters = preferred_manufacturer_filters(
+            {
+                "value": "100nF",
+                "category": "capacitor",
+                "requirements": ["through-hole", "film", "5mm pitch"],
+            }
+        )
+
+        self.assertEqual(filters, ["WIMA", "KEMET"])
 
     def test_build_capacitor_query_prefers_electrolytic_requirement_over_noisy_evidence(self) -> None:
         query = build_keyword_query(
@@ -196,13 +212,147 @@ class MouserTests(unittest.TestCase):
 
         messages: list[str] = []
 
-        with patch("pedalbom.mouser.search_keyword", return_value=response) as search:
+        with (
+            patch("pedalbom.mouser.search_keyword", return_value=response) as search,
+            patch("pedalbom.mouser.search_keyword_and_manufacturer", return_value={"SearchResults": {"Parts": []}}),
+        ):
             sourced = source_bom(bom, api_key="test-key", sleeper=lambda _: None, progress=messages.append)
 
         self.assertEqual(search.call_count, 1)
         self.assertEqual(sourced["items"][0]["sourcing"]["query"], sourced["items"][1]["sourcing"]["query"])
         self.assertTrue(any("reusing cached search" in message for message in messages))
         self.assertTrue(any("found 0 candidate" in message for message in messages))
+
+    def test_source_bom_cascades_manufacturer_filters_before_generic_search(self) -> None:
+        bom = {
+            "schema_version": "1.0",
+            "project": {"name": "Test Drive"},
+            "items": [
+                {
+                    "part_id": "C1",
+                    "value": "100nF",
+                    "quantity": 1,
+                    "category": "capacitor",
+                    "requirements": ["through-hole", "film", "5mm pitch"],
+                }
+            ],
+        }
+        wima = {
+            "SearchResults": {
+                "Parts": [
+                    {
+                        "MouserPartNumber": "505-MKS2C031001A00K",
+                        "ManufacturerPartNumber": "MKS2C031001A00K",
+                        "Manufacturer": "WIMA",
+                        "Description": "Film Capacitors 100nF 63V 5mm",
+                        "Category": "Film Capacitors",
+                        "Availability": "100 In Stock",
+                    }
+                ]
+            }
+        }
+
+        with (
+            patch("pedalbom.mouser.search_keyword") as generic_search,
+            patch("pedalbom.mouser.search_keyword_and_manufacturer", return_value=wima) as mfr_search,
+        ):
+            sourced = source_bom(bom, api_key="test-key", sleeper=lambda _: None)
+
+        item = sourced["items"][0]
+        self.assertEqual(item["sourcing"]["manufacturer_filters"], ["WIMA", "KEMET"])
+        self.assertEqual(item["sourcing"]["search_strategy"], "manufacturer:WIMA")
+        self.assertEqual(mfr_search.call_count, 1)
+        generic_search.assert_not_called()
+        self.assertTrue(
+            any(candidate["manufacturer"] == "WIMA" for candidate in item["sourcing"]["candidates"])
+        )
+
+    def test_source_bom_falls_back_to_generic_search_after_empty_manufacturer_filters(self) -> None:
+        bom = {
+            "schema_version": "1.0",
+            "project": {"name": "Test Drive"},
+            "items": [
+                {
+                    "part_id": "C1",
+                    "value": "100nF",
+                    "quantity": 1,
+                    "category": "capacitor",
+                    "requirements": ["through-hole", "film", "5mm pitch"],
+                }
+            ],
+        }
+        generic = {"SearchResults": {"Parts": [{"MouserPartNumber": "123", "Description": "100nF Film Capacitor"}]}}
+
+        with (
+            patch("pedalbom.mouser.search_keyword", return_value=generic) as generic_search,
+            patch(
+                "pedalbom.mouser.search_keyword_and_manufacturer",
+                return_value={"SearchResults": {"Parts": []}},
+            ) as mfr_search,
+        ):
+            sourced = source_bom(bom, api_key="test-key", sleeper=lambda _: None)
+
+        self.assertEqual(mfr_search.call_count, 2)
+        self.assertEqual(generic_search.call_count, 1)
+        self.assertEqual(sourced["items"][0]["sourcing"]["search_strategy"], "generic")
+
+    def test_source_bom_treats_null_mouser_search_results_as_empty(self) -> None:
+        bom = {
+            "schema_version": "1.0",
+            "project": {"name": "Test Drive"},
+            "items": [
+                {
+                    "part_id": "Footswitch",
+                    "value": "3PDT",
+                    "quantity": 1,
+                    "category": "switch",
+                    "requirements": ["through-hole", "3PDT", "solder lug"],
+                }
+            ],
+        }
+
+        with (
+            patch("pedalbom.mouser.search_keyword", return_value={"SearchResults": None}) as generic_search,
+            patch(
+                "pedalbom.mouser.search_keyword_and_manufacturer",
+                return_value={"Errors": [], "SearchResults": None},
+            ) as mfr_search,
+        ):
+            sourced = source_bom(bom, api_key="test-key", sleeper=lambda _: None)
+
+        self.assertEqual(mfr_search.call_count, 2)
+        self.assertEqual(generic_search.call_count, 1)
+        self.assertEqual(sourced["items"][0]["sourcing"]["candidates"], [])
+        self.assertEqual(sourced["items"][0]["sourcing"]["search_strategy"], "generic")
+
+    def test_search_keyword_uses_in_stock_search_option(self) -> None:
+        response = FakeResponse(b'{"SearchResults":{"Parts":[]}}')
+
+        with patch("urllib.request.urlopen", return_value=response) as urlopen:
+            result = search_keyword("10k resistor", MouserConfig(api_key="test-key"))
+
+        request = urlopen.call_args.args[0]
+        body = request.data.decode("utf-8")
+        self.assertEqual(result, {"SearchResults": {"Parts": []}})
+        self.assertIn('"searchOptions": "InStock"', body)
+
+    def test_search_keyword_and_manufacturer_uses_v2_request_shape(self) -> None:
+        response = FakeResponse(b'{"SearchResults":{"Parts":[]}}')
+
+        with patch("urllib.request.urlopen", return_value=response) as urlopen:
+            result = search_keyword_and_manufacturer(
+                "100nF film capacitor 5mm pitch",
+                "WIMA",
+                MouserConfig(api_key="test-key"),
+            )
+
+        request = urlopen.call_args.args[0]
+        body = request.data.decode("utf-8")
+        self.assertIn("/api/v2/search/keywordandmanufacturer", request.full_url)
+        self.assertEqual(result, {"SearchResults": {"Parts": []}})
+        self.assertIn("SearchByKeywordMfrNameRequest", body)
+        self.assertIn('"manufacturerName": "WIMA"', body)
+        self.assertIn('"searchOptions": "InStock"', body)
 
     def test_source_bom_error_includes_item_and_query(self) -> None:
         bom = {

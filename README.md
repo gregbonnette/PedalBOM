@@ -201,7 +201,7 @@ Long-running commands print progress messages to stderr. Add `--quiet` to `extra
 
 If Mouser returns `InvalidCharacters`, update/reinstall the CLI and rerun sourcing. The CLI sanitizes common electronics symbols before search and reports the failing BOM item plus Mouser query when the API still rejects a keyword.
 
-Mouser searches are intentionally compact: the CLI focuses each keyword on the core value or part number, product type, package/footprint, and critical guitar-pedal fit terms instead of sending the full BOM note text. PCB designators such as `R2`, `C3`, grouped designators, and `source_evidence` text are not included in Mouser search keywords.
+Mouser searches are intentionally compact and in-stock-only: the CLI focuses each keyword on the core value or part number, product type, package/footprint, and critical guitar-pedal fit terms instead of sending the full BOM note text. PCB designators such as `R2`, `C3`, grouped designators, and `source_evidence` text are not included in Mouser search keywords. Where preferred manufacturers are known, the CLI cascades through Mouser V2 manufacturer-filtered searches first and only falls back to generic keyword search if those manufacturer searches return no candidates.
 
 There is also a fallback parser for text-extractable PDFs:
 

@@ -81,15 +81,32 @@ If Mouser returns `InvalidCharacters`, update/reinstall the CLI and rerun sourci
 1. Read the build document and extract a normalized BOM JSON object matching `pedalbom schema`.
 2. Preserve evidence for each row in `source_evidence`.
 3. Put build-wide constraints in `global_requirements`, such as resistor wattage, capacitor footprint, voltage minimums, pot style, enclosure, or special sourcing notes.
-4. Put ambiguities in `issues`; ask the user before sourcing if an issue changes what should be purchased.
+4. Put ambiguities in `issues`.
 5. Run `pedalbom validate extracted.bom.json`.
 6. Fix validation errors by editing the JSON, not by changing the schema.
-7. Run `pedalbom doctor` in the same local shell that will run sourcing.
-8. Run `pedalbom source extracted.bom.json --out sourced.sourced.json` only after validation succeeds and only from the user's local allowed IP environment.
-9. If local execution is not available to the assistant, give the user the exact `pedalbom source` command to run locally and wait for `sourced.sourced.json`.
-10. Review each item's `sourcing.candidates` list and select the best orderable part from those candidates.
-11. Populate `manufacturer_part_number`, `mouser_part_number`, and `selection_rationale` for each selected item.
-12. Run `pedalbom export sourced.sourced.json --out mouser-bom.csv`.
+7. Resolve issues with the user iteratively before sourcing. Do not create the final sourcing BOM until this loop is complete.
+8. Run `pedalbom doctor` in the same local shell that will run sourcing.
+9. Run `pedalbom source extracted.bom.json --out sourced.sourced.json` only after validation succeeds, issue resolution is complete, and only from the user's local allowed IP environment.
+10. If local execution is not available to the assistant, give the user the exact `pedalbom source` command to run locally and wait for `sourced.sourced.json`.
+11. Review each item's `sourcing.candidates` list and select the best orderable part from those candidates.
+12. Populate `manufacturer_part_number`, `mouser_part_number`, and `selection_rationale` for each selected item.
+13. Run `pedalbom export sourced.sourced.json --out mouser-bom.csv`.
+
+## Issue Resolution
+
+Issues are blocking review items, not passive notes. After extraction and validation, present the issues to the user one at a time or in a small numbered batch. For each issue, explain the purchase-impacting choice in plain language and ask the user for direction before continuing.
+
+Do not proceed to `pedalbom source` while any issue could change:
+
+- The part value, quantity, or category.
+- Whether a substitution should be used.
+- Whether an optional mod should be included.
+- Footprint, package, pitch, taper, polarity, voltage, wattage, gain grade, pinout, or enclosure/mechanical fit.
+- Whether a hard-to-source or obsolete part should be replaced, omitted, or manually sourced.
+
+After the user answers an issue, immediately update `extracted.bom.json`: edit the affected item, add or revise requirements, adjust quantities, or update/remove the issue. Then move to the next unresolved issue. If the user explicitly defers an issue, keep it in `issues` with an explanation that sourcing should leave the affected part unselected or ask again during candidate selection.
+
+Only begin sourcing when every purchase-affecting issue is either resolved in the BOM or explicitly deferred by the user. Never show an issue list and then automatically generate the sourcing BOM without waiting for user feedback.
 
 ## Candidate Selection
 
@@ -106,11 +123,11 @@ Prefer active, in-stock, orderable parts with the shortest practical lead time w
 
 Every selected part number must come from `sourcing.candidates` or from explicit source-document evidence. Add `selection_rationale` explaining the fit and any tradeoff, such as "selected 1/4W through-hole metal film 10k resistor, active lifecycle, 3,200 in stock, matches global resistor requirement."
 
-The Mouser search query should describe the core product, not the whole source note. Keep search terms focused on exact value or part number, product type, package/footprint, and critical guitar-pedal fit semantics. Never include PCB designators such as `R2`, `C3`, `Q1`, grouped designators, or `source_evidence` text in Mouser search keywords. Exclude prose such as "adjust to taste", original-circuit commentary, unselected substitutions, and build caveats unless they directly change the part to purchase.
+The Mouser search query should describe the core product, not the whole source note. Keep search terms focused on exact value or part number, product type, package/footprint, and critical guitar-pedal fit semantics. Never include PCB designators such as `R2`, `C3`, `Q1`, grouped designators, or `source_evidence` text in Mouser search keywords. Exclude prose such as "adjust to taste", original-circuit commentary, unselected substitutions, and build caveats unless they directly change the part to purchase. The CLI uses in-stock-only Mouser searches. When preferred manufacturers are available, it cascades through Mouser V2 manufacturer-filtered searches first and only falls back to generic keyword search if those manufacturer searches return no candidates.
 
 ## Pedal Component Knowledge
 
-Use this component knowledge to improve Mouser search terms and candidate selection. Do not use it to choose an online vendor; default to Mouser for API sourcing. Only if Mouser cannot provide a suitable part should a later manual browser pass check Love My Switches or Small Bear. Any non-Mouser sourced row in the final CSV must set `supplier` and include a product-page hyperlink in `product_url`.
+Use this component knowledge to improve Mouser search terms and candidate selection. Do not use it to choose an online vendor; default to Mouser for API sourcing. Tayda is not an allowed sourcing fallback. Only if Mouser cannot provide a suitable part should a later manual browser pass check Love My Switches or Small Bear. Any non-Mouser sourced row in the final CSV must set `supplier` and include a product-page hyperlink in `product_url`.
 
 - Resistors: prefer 1/4W metal film resistors for pedal builds. On Mouser, prefer reputable commodity lines such as Yageo or KOA Speer. Avoid carbon film unless explicitly required. Avoid flimsy low-quality metal film parts with thin leads.
 - Film capacitors: for common signal-path film values, prefer box film parts with the requested lead spacing, especially WIMA MKS2 for about 10nF through 2.2uF when the footprint fits. For small pF/nF precision parts, consider Kemet PHE426-style polystyrene when the BOM or circuit calls for that behavior.

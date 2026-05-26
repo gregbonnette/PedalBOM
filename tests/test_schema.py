@@ -99,6 +99,32 @@ class SchemaTests(unittest.TestCase):
 
         self.assertTrue(result.ok)
 
+    def test_mouser_manufacturer_filters_are_allowed(self) -> None:
+        bom = {
+            "schema_version": "1.0",
+            "project": {"name": "Test Drive"},
+            "items": [
+                {
+                    "part_id": "C1",
+                    "value": "100nF",
+                    "quantity": 1,
+                    "category": "capacitor",
+                    "source_evidence": "C1 100nF",
+                    "sourcing": {
+                        "query": "100nF film capacitor 5mm pitch through hole",
+                        "provider": "mouser",
+                        "manufacturer_filters": ["WIMA", "KEMET"],
+                        "search_strategy": "manufacturer:WIMA",
+                        "candidates": [],
+                    },
+                }
+            ],
+        }
+
+        result = validate_bom(bom)
+
+        self.assertTrue(result.ok)
+
 
 if __name__ == "__main__":
     unittest.main()

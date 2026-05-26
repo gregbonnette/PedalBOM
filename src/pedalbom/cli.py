@@ -37,7 +37,7 @@ def main() -> None:
     source_command.add_argument("bom", type=Path)
     source_command.add_argument("--out", type=Path, required=True)
     source_command.add_argument("--api-key", help="Mouser Search API key. Defaults to MOUSER_API_KEY.")
-    source_command.add_argument("--limit", type=int, default=5, help="Candidate count to keep per row.")
+    source_command.add_argument("--limit", type=int, default=10, help="Candidate count to keep per row.")
     source_command.add_argument(
         "--rate-limit-delay",
         type=float,

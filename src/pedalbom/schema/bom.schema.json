@@ -71,6 +71,11 @@
             "properties": {
               "query": { "type": "string" },
               "provider": { "type": "string" },
+              "manufacturer_filters": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "search_strategy": { "type": "string" },
               "candidates": {
                 "type": "array",
                 "items": {

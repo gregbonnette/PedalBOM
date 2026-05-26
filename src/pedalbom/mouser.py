@@ -10,7 +10,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Callable
 
-MOUSER_BASE_URL = "https://api.mouser.com/api/v1/search/keyword"
+MOUSER_KEYWORD_URL = "https://api.mouser.com/api/v1/search/keyword"
+MOUSER_KEYWORD_AND_MANUFACTURER_URL = "https://api.mouser.com/api/v2/search/keywordandmanufacturer"
 ProgressCallback = Callable[[str], None]
 
 
@@ -33,7 +34,7 @@ def has_mouser_api_key(api_key: str | None = None) -> bool:
 def source_bom(
     data: dict[str, Any],
     api_key: str | None = None,
-    limit: int = 5,
+    limit: int = 10,
     rate_limit_delay: float = 2.1,
     max_retries: int = 2,
     retry_delay: float = 60.0,
@@ -42,45 +43,103 @@ def source_bom(
 ) -> dict[str, Any]:
     config = load_mouser_config(api_key)
     sourced_items: list[dict[str, Any]] = []
-    responses_by_query: dict[str, dict[str, Any]] = {}
+    responses_by_search: dict[tuple[str, str], dict[str, Any]] = {}
     unique_call_count = 0
     total_items = len(data["items"])
     emit_progress(progress, f"Sourcing {total_items} BOM item(s) with Mouser.")
     for index, item in enumerate(data["items"], start=1):
         query = build_keyword_query(item)
         part_id = item.get("part_id", f"item {index}")
-        if query in responses_by_query:
-            emit_progress(progress, f"[{index}/{total_items}] {part_id}: reusing cached search for {query!r}.")
-            response = responses_by_query[query]
-        else:
-            if unique_call_count and rate_limit_delay > 0:
-                emit_progress(progress, f"[{index}/{total_items}] Waiting {rate_limit_delay:g}s before next Mouser call.")
-                sleeper(rate_limit_delay)
-            emit_progress(progress, f"[{index}/{total_items}] {part_id}: searching Mouser for {query!r}.")
-            try:
-                response = search_keyword(
-                    query,
-                    config,
-                    max_retries=max_retries,
-                    retry_delay=retry_delay,
-                    sleeper=sleeper,
-                    progress=progress,
+        manufacturer_filters = preferred_manufacturer_filters(item)
+        parts: list[dict[str, Any]] = []
+        used_search_label = "generic"
+        for manufacturer in manufacturer_filters:
+            mfr_cache_key = (manufacturer, query)
+            if mfr_cache_key in responses_by_search:
+                emit_progress(
+                    progress,
+                    f"[{index}/{total_items}] {part_id}: reusing cached {manufacturer} search for {query!r}.",
                 )
-            except RuntimeError as exc:
-                raise RuntimeError(
-                    f"Failed Mouser search for item {index}/{total_items} ({part_id}) with query {query!r}: {exc}"
-                ) from exc
-            responses_by_query[query] = response
-            unique_call_count += 1
-        candidates = rank_candidates(item, response.get("SearchResults", {}).get("Parts", []))
+                mfr_response = responses_by_search[mfr_cache_key]
+            else:
+                if rate_limit_delay > 0:
+                    emit_progress(
+                        progress,
+                        f"[{index}/{total_items}] Waiting {rate_limit_delay:g}s before next Mouser call.",
+                    )
+                    sleeper(rate_limit_delay)
+                emit_progress(
+                    progress,
+                    f"[{index}/{total_items}] {part_id}: searching Mouser V2 for {query!r} by {manufacturer}.",
+                )
+                try:
+                    mfr_response = search_keyword_and_manufacturer(
+                        query,
+                        manufacturer,
+                        config,
+                        max_retries=max_retries,
+                        retry_delay=retry_delay,
+                        sleeper=sleeper,
+                        progress=progress,
+                    )
+                except RuntimeError as exc:
+                    raise RuntimeError(
+                        f"Failed Mouser manufacturer search for item {index}/{total_items} ({part_id}) "
+                        f"with query {query!r} and manufacturer {manufacturer!r}: {exc}"
+                    ) from exc
+                responses_by_search[mfr_cache_key] = mfr_response
+                unique_call_count += 1
+            mfr_parts = response_parts(mfr_response)
+            if mfr_parts:
+                parts = mfr_parts
+                used_search_label = f"manufacturer:{manufacturer}"
+                emit_progress(
+                    progress,
+                    f"[{index}/{total_items}] {part_id}: using {len(parts)} {manufacturer} candidate(s).",
+                )
+                break
+
+        if not parts:
+            generic_cache_key = ("", query)
+            if generic_cache_key in responses_by_search:
+                emit_progress(progress, f"[{index}/{total_items}] {part_id}: reusing cached search for {query!r}.")
+                response = responses_by_search[generic_cache_key]
+            else:
+                if unique_call_count and rate_limit_delay > 0:
+                    emit_progress(
+                        progress,
+                        f"[{index}/{total_items}] Waiting {rate_limit_delay:g}s before next Mouser call.",
+                    )
+                    sleeper(rate_limit_delay)
+                emit_progress(progress, f"[{index}/{total_items}] {part_id}: searching Mouser for {query!r}.")
+                try:
+                    response = search_keyword(
+                        query,
+                        config,
+                        max_retries=max_retries,
+                        retry_delay=retry_delay,
+                        sleeper=sleeper,
+                        progress=progress,
+                    )
+                except RuntimeError as exc:
+                    raise RuntimeError(
+                        f"Failed Mouser search for item {index}/{total_items} ({part_id}) with query {query!r}: {exc}"
+                    ) from exc
+                responses_by_search[generic_cache_key] = response
+                unique_call_count += 1
+            parts = response_parts(response)
+
+        candidates = rank_candidates(item, dedupe_parts(parts))
         emit_progress(
             progress,
-            f"[{index}/{total_items}] {part_id}: found {len(candidates)} candidate(s), keeping {min(limit, len(candidates))}.",
+            f"[{index}/{total_items}] {part_id}: found {len(candidates)} candidate(s) via {used_search_label}, keeping {min(limit, len(candidates))}.",
         )
         sourced_item = dict(item)
         sourced_item["sourcing"] = {
             "query": query,
             "provider": "mouser",
+            "manufacturer_filters": manufacturer_filters,
+            "search_strategy": used_search_label,
             "candidates": candidates[:limit],
         }
         sourced_items.append(sourced_item)
@@ -94,7 +153,8 @@ def source_bom(
                 "Mouser candidates were collected from the Search API. Final manufacturer and Mouser part "
                 "numbers require an explicit downstream selection step based on fit, orderability, lifecycle, "
                 "lead time, and audio-application suitability. Identical search queries were cached within "
-                "this run to reduce API usage."
+                "this run to reduce API usage. Curated manufacturer-filtered V2 searches cascade through "
+                "preferred manufacturers before falling back to generic keyword search."
             ),
         },
     }
@@ -309,13 +369,67 @@ def search_keyword(
     progress: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     params = urllib.parse.urlencode({"apiKey": config.api_key})
-    body = json.dumps({"SearchByKeywordRequest": {"keyword": query, "records": 50, "startingRecord": 0}})
+    body = json.dumps(
+        {"SearchByKeywordRequest": {"keyword": query, "records": 50, "startingRecord": 0, "searchOptions": "InStock"}}
+    )
     request = urllib.request.Request(
-        f"{MOUSER_BASE_URL}?{params}",
+        f"{MOUSER_KEYWORD_URL}?{params}",
         data=body.encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
+    return execute_search_request(request, max_retries=max_retries, retry_delay=retry_delay, sleeper=sleeper, progress=progress)
+
+
+def response_parts(response: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(response, dict):
+        return []
+    search_results = response.get("SearchResults")
+    if not isinstance(search_results, dict):
+        return []
+    parts = search_results.get("Parts")
+    if not isinstance(parts, list):
+        return []
+    return parts
+
+
+def search_keyword_and_manufacturer(
+    query: str,
+    manufacturer_name: str,
+    config: MouserConfig,
+    max_retries: int = 2,
+    retry_delay: float = 60.0,
+    sleeper: Callable[[float], None] = time.sleep,
+    progress: ProgressCallback | None = None,
+) -> dict[str, Any]:
+    params = urllib.parse.urlencode({"apiKey": config.api_key})
+    body = json.dumps(
+        {
+            "SearchByKeywordMfrNameRequest": {
+                "keyword": query,
+                "manufacturerName": manufacturer_name,
+                "records": 50,
+                "pageNumber": 1,
+                "searchOptions": "InStock",
+            }
+        }
+    )
+    request = urllib.request.Request(
+        f"{MOUSER_KEYWORD_AND_MANUFACTURER_URL}?{params}",
+        data=body.encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    return execute_search_request(request, max_retries=max_retries, retry_delay=retry_delay, sleeper=sleeper, progress=progress)
+
+
+def execute_search_request(
+    request: urllib.request.Request,
+    max_retries: int,
+    retry_delay: float,
+    sleeper: Callable[[float], None],
+    progress: ProgressCallback | None = None,
+) -> dict[str, Any]:
     for attempt in range(max_retries + 1):
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
@@ -332,6 +446,52 @@ def search_keyword(
                 continue
             raise RuntimeError(format_mouser_http_error(exc.code, detail)) from exc
     raise RuntimeError("Mouser API search failed after retries.")
+
+
+def preferred_manufacturer_filters(item: dict[str, Any]) -> list[str]:
+    category = item.get("category", "")
+    text = item_text(item)
+    if category == "resistor":
+        return ["YAGEO", "KOA Speer"]
+    if category == "capacitor":
+        if "film" in text:
+            return ["WIMA", "KEMET"]
+        if "electrolytic" in text:
+            return ["Nichicon", "Panasonic", "Rubycon"]
+        if "ceramic" in text or "mlcc" in text or small_capacitor_value(item.get("value", "")):
+            return ["KEMET", "Murata Electronics", "TDK"]
+    if category == "potentiometer":
+        if "trimmer" in text or "3362" in text:
+            return ["Bourns"]
+        return ["Bourns", "Alpha (Taiwan)"]
+    if category in {"semiconductor", "ic"}:
+        value = str(item.get("value", ""))
+        if re.match(r"^(1N|BAT)", value, flags=re.IGNORECASE):
+            return ["onsemi", "Vishay"]
+        if re.match(r"^(2N|BC)", value, flags=re.IGNORECASE):
+            return ["onsemi", "Central Semiconductor"]
+    if category == "jack":
+        return ["Switchcraft", "Neutrik"]
+    if category == "switch":
+        return ["C&K", "NKK Switches"]
+    return []
+
+
+def small_capacitor_value(value: Any) -> bool:
+    match = re.fullmatch(r"(\d+(?:\.\d+)?)\s*pF", str(value).strip(), flags=re.IGNORECASE)
+    return bool(match and float(match.group(1)) < 1000)
+
+
+def dedupe_parts(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for part in parts:
+        key = str(part.get("MouserPartNumber") or part.get("ManufacturerPartNumber") or id(part))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(part)
+    return deduped
 
 
 def rank_candidates(item: dict[str, Any], parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
